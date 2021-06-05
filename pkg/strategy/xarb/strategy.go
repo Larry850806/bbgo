@@ -136,35 +136,26 @@ func (s *Strategy) check(ctx context.Context, _ bbgo.OrderExecutionRouter) {
 	var feeBidPrice, feeAskPrice fixedpoint.Value
 
 	for sessionName, streamBook := range s.books {
-		book := streamBook.CopyDepth(5)
-
-		// ignore empty bid and ask books
-		if _, ok := book.BestAsk(); !ok {
-			continue
-		}
-		if _, ok := book.BestBid(); !ok {
+		bestBid, bestAsk, ok := streamBook.BestBidAndAsk()
+		if !ok {
 			continue
 		}
 
-		if valid, err := book.IsValid(); !valid {
-			log.WithError(err).Errorf("%s invalid order book, skip: %s", s.Symbol, err.Error())
+		if bestBid.Price > bestAsk.Price {
+			log.Errorf("%s invalid order book, skip", s.Symbol)
 			continue
 		}
 
-		if bestBid, ok := book.BestBid(); ok {
-			if bestBidPrice == 0 || bestBid.Price > bestBidPrice {
-				bestBidPrice = bestBid.Price
-				bestBidVolume = bestBid.Volume
-				bestBidSession = sessionName
-			}
+		if bestBidPrice == 0 || bestBid.Price > bestBidPrice {
+			bestBidPrice = bestBid.Price
+			bestBidVolume = bestBid.Volume
+			bestBidSession = sessionName
 		}
 
-		if bestAsk, ok := book.BestAsk(); ok {
-			if bestAskPrice == 0 || bestAsk.Price < bestAskPrice {
-				bestAskPrice = bestAsk.Price
-				bestAskVolume = bestAsk.Volume
-				bestAskSession = sessionName
-			}
+		if bestAskPrice == 0 || bestAsk.Price < bestAskPrice {
+			bestAskPrice = bestAsk.Price
+			bestAskVolume = bestAsk.Volume
+			bestAskSession = sessionName
 		}
 	}
 
@@ -521,7 +512,7 @@ func (s *Strategy) CrossRun(ctx context.Context, orderExecutionRouter bbgo.Order
 		s.orderStore.BindStream(session.UserDataStream)
 		s.activeMakerOrders.BindStream(session.UserDataStream)
 
-		c := make(chan types.SubmitOrder, 1)
+		c := make(chan types.SubmitOrder, 2)
 		s.orderChannels[sessionID] = c
 
 		log.Infof("spawning order worker %s", sessionID)
